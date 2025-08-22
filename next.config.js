@@ -15,7 +15,7 @@ const themes = scanSubdirectories(path.resolve(__dirname, 'themes'))
 const locales = (function () {
   // 根据BLOG_NOTION_PAGE_ID 检查支持多少种语言数据.
   // 支持如下格式配置多个语言的页面id xxx,zh:xxx,en:xxx
-  let langs = [BLOG.LANG.slice(0, 2)]
+  const langs = [BLOG.LANG]
   if (BLOG.NOTION_PAGE_ID.indexOf(',') > 0) {
     const siteIds = BLOG.NOTION_PAGE_ID.split(',')
     for (let index = 0; index < siteIds.length; index++) {
@@ -33,6 +33,7 @@ const locales = (function () {
 })()
 
 // 编译前执行
+// eslint-disable-next-line no-unused-vars
 const preBuild = (function () {
   if (
     !process.env.npm_lifecycle_event === 'export' &&
@@ -80,15 +81,22 @@ function scanSubdirectories(directory) {
  */
 
 const nextConfig = {
-  output: process.env.EXPORT ? 'export' : undefined,
+  eslint: {
+    ignoreDuringBuilds: true
+  },
+  output: process.env.EXPORT
+    ? 'export'
+    : process.env.NEXT_BUILD_STANDALONE === 'true'
+      ? 'standalone'
+      : undefined,
   staticPageGenerationTimeout: 120,
   // 多语言， 在export时禁用
   i18n: process.env.EXPORT
     ? undefined
     : {
-        defaultLocale: BLOG.LANG.slice(0, 2),
+        defaultLocale: BLOG.LANG,
         // 支持的所有多语言,按需填写即可
-        locales
+        locales: locales
       },
   images: {
     // 图片压缩
@@ -109,7 +117,7 @@ const nextConfig = {
   // 默认将feed重定向至 /public/rss/feed.xml
   redirects: process.env.EXPORT
     ? undefined
-    : async () => {
+    : () => {
         return [
           {
             source: '/feed',
@@ -121,7 +129,7 @@ const nextConfig = {
   // 重写url
   rewrites: process.env.EXPORT
     ? undefined
-    : async () => {
+    : () => {
         // 处理多语言重定向
         const langsRewrites = []
         if (BLOG.NOTION_PAGE_ID.indexOf(',') > 0) {
@@ -168,7 +176,7 @@ const nextConfig = {
       },
   headers: process.env.EXPORT
     ? undefined
-    : async () => {
+    : () => {
         return [
           {
             source: '/:path*{/}?',
@@ -190,6 +198,8 @@ const nextConfig = {
       },
   webpack: (config, { dev, isServer }) => {
     // 动态主题：添加 resolve.alias 配置，将动态路径映射到实际路径
+    config.resolve.alias['@'] = path.resolve(__dirname)
+
     if (!isServer) {
       console.log('[默认主题]', path.resolve(__dirname, 'themes', THEME))
     }
@@ -207,13 +217,14 @@ const nextConfig = {
   experimental: {
     scrollRestoration: true
   },
-  exportPathMap: async function (
+  exportPathMap: function (
     defaultPathMap,
     { dev, dir, outDir, distDir, buildId }
   ) {
     // export 静态导出时 忽略/pages/sitemap.xml.js ， 否则和getServerSideProps这个动态文件冲突
     const pages = { ...defaultPathMap }
     delete pages['/sitemap.xml']
+    delete pages['/auth']
     return pages
   },
   publicRuntimeConfig: {
@@ -222,4 +233,6 @@ const nextConfig = {
   }
 }
 
-module.exports = withBundleAnalyzer(nextConfig)
+module.exports = process.env.ANALYZE
+  ? withBundleAnalyzer(nextConfig)
+  : nextConfig
